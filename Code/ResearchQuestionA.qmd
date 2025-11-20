@@ -161,10 +161,12 @@ profession_summary <- centrality_prof %>%
     n_people = n(),
     mean_degree = mean(degree, na.rm = TRUE),
     mean_eigenvector = mean(eigenvector, na.rm = TRUE),
-    median_degree = median(degree, na.rm = TRUE)
+    #median_degree = median(degree, na.rm = TRUE)
   ) %>%
   filter(n_people > 100) %>%   #keep only well-represented professions
   arrange(desc(mean_eigenvector))
+
+colnames(profession_summary) <- c("Genre", "Number of People", "Mean Degree", "Mean Eigenvector")
 
 #profession_summary
 head(profession_summary,6) #Table 2
@@ -197,6 +199,7 @@ profession_struct_summary <- centrality_prof2 %>%
   filter(n_people > 100) %>%  
   arrange(desc(mean_clustering))
 
+colnames(profession_struct_summary) <- c("Main Profession", "Number of People", "Mean Local Clustering")
 #profession_struct_summary
 head(profession_struct_summary, 5) #Table 4
 tail(profession_struct_summary, 5) #Table 5
@@ -227,12 +230,14 @@ genre_summary <- centrality_genre %>%
     n_people = n(),
     mean_degree = mean(degree, na.rm = TRUE),
     mean_eigenvector = mean(eigenvector, na.rm = TRUE),
-    median_degree = median(degree, na.rm = TRUE)
+    #median_degree = median(degree, na.rm = TRUE)
   ) %>%
   filter(n_people > 100) %>%
-  arrange(desc(mean_degree))
+  arrange(desc(mean_eigenvector))
 
-genre_summary
+colnames(genre_summary) <- c("Genre", "Number of People", "Mean Degree", "Mean Eigenvector")
+
+#genre_summary
 head(genre_summary, 5) #Table 6
 tail(genre_summary, 5) #Table 7
 ```
@@ -252,6 +257,8 @@ profession_struct_summary3 <- centrality_prof3 %>%
   ) %>%
   filter(n_people > 100) %>%  
   arrange(desc(mean_clustering))
+
+colnames(profession_struct_summary3) <- c("Genre", "Number of People", "Mean Local Clustering")
 
 #profession_struct_summary3
 head(profession_struct_summary3, 5) #Table 8
