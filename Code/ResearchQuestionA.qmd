@@ -1,0 +1,259 @@
+---
+title: "Social Networks and Success: Analyzing Collaboration Patterns in Major Films"
+author: "Logan Marshall"
+format: pdf
+editor: visual
+---
+
+## Data Cleaning
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+#Data Cleaning
+library(dplyr)
+library(tidyr)
+library(readr)
+library(stringr)
+
+#names_df <- read_csv("~/names.csv", na = "\\N") %>%
+#  select(nconst, primaryName, birthYear, primaryProfession, knownForTitles) %>%
+#  mutate(birthYear = as.numeric(birthYear)) %>%
+#  filter(birthYear >= 1930)   # keep people born after 1930
+
+#titles_df <- read_csv("~/titles.csv", na = "\\N") %>%
+#  select(tconst, startYear, primaryTitle, genres) %>%
+#  mutate(startYear = as.numeric(startYear)) %>%
+#  filter(startYear >= 2018 & startYear <= 2022)   # keep movies from 2018 onward
+
+#names_df <- names_df %>%
+#  mutate(mainProfession = sapply(primaryProfession, function(x) {
+#    if (is.na(x)) return(NA)  # handle missing values safely
+#    parts <- strsplit(x, ",")[[1]]
+#    parts <- trimws(parts)
+#    if (any(parts %in% c("actor", "actress"))) {
+#      parts[parts %in% c("actor", "actress")][1]
+#    } else {
+#      parts[1]
+#    }
+#  }))
+
+#merged_df <- names_df %>%
+#  separate_rows(knownForTitles, sep = ",") %>%
+#  rename(tconst = knownForTitles) %>%
+#  inner_join(titles_df, by = "tconst")
+
+#write_csv(merged_df, "merged_df.csv")
+```
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+library(igraph)
+df <- read.csv("~/merged_df.csv")
+
+df <- df %>%
+  mutate(genres = str_split(genres, ",") |> sapply(`[`, 1))
+```
+
+## Eigenvector Centrality (Profession)
+
+```{r, echo=FALSE, message=FALSE}
+g_bipartite <- graph_from_data_frame(
+  d = df %>% select(nconst, tconst),  #edges
+  directed = FALSE
+)
+
+#Add vertex 'type' attribute: TRUE = movie, FALSE = person
+V(g_bipartite)$type <- V(g_bipartite)$name %in% df$tconst
+
+#Project the bipartite graph to the "person" mode (FALSE = people)
+proj <- bipartite_projection(g_bipartite)
+
+g_people <- proj$proj1  #This is my actor/filmmaker collaboration network
+
+eig_cen <- eigen_centrality(g_people)
+#head(sort(eig_cen$vector, decreasing = TRUE), 10)
+```
+
+## Degree Centrality
+
+```{r, echo=FALSE}
+deg_cen <- degree(g_people, mode = "all")
+
+#Sort by degree centrality and show top 10
+#sort(deg_cen, decreasing = TRUE)[1:10]
+```
+
+```{r, echo=FALSE}
+df %>%
+  group_by(primaryTitle) %>%
+  summarise(n_people = n_distinct(nconst)) %>%
+  arrange(desc(n_people)) %>%
+  head(6)
+#Table 1
+```
+
+```{r, echo=FALSE}
+#Data Cleaning (Remove Sport genre)
+df2 <- df %>%
+  filter(!str_detect(genres, "Sport"))
+```
+
+## Eigenvector Centrality
+
+```{r, echo=FALSE}
+g_bipartite <- graph_from_data_frame(
+  d = df2 %>% select(nconst, tconst),  #edges
+  directed = FALSE
+)
+
+V(g_bipartite)$type <- V(g_bipartite)$name %in% df2$tconst
+
+proj <- bipartite_projection(g_bipartite)
+
+g_people <- proj$proj1
+
+eig_cen <- eigen_centrality(g_people)
+#head(sort(eig_cen$vector, decreasing = TRUE), 10)
+```
+
+## Degree Centrality
+
+```{r, echo=FALSE}
+#bipartite edges (person <-> movie)
+edges <- df2 %>% select(nconst, tconst)
+
+g_bipartite <- graph_from_data_frame(edges, directed = FALSE)
+
+V(g_bipartite)$type <- V(g_bipartite)$name %in% df2$tconst
+
+proj <- bipartite_projection(g_bipartite)
+g_people <- proj$proj1 
+
+deg_cen <- degree(g_people, mode = "all")
+
+#sort(deg_cen, decreasing = TRUE)[1:10]
+
+#df2 %>% filter(nconst %in% c("nm13892144", "nm5719611", "nm9289203", "nm2266889", "nm3435359", "nm5545351", "nm7080280", "nm5355228", "nm8111991", "nm0971495")) %>% distinct()
+
+#Mainly stunt actors
+```
+
+## Table of Mean Centrality Per Profession
+
+```{r, echo=FALSE}
+# Centralities
+deg_cen <- degree(g_people, mode = "all")
+eig_cen <- eigen_centrality(g_people)$vector
+
+centrality_df <- data.frame(
+  nconst = names(deg_cen),
+  degree = deg_cen,
+  eigenvector = eig_cen
+)
+
+#Merge to get mainProfession per person
+centrality_prof <- centrality_df %>%
+  left_join(df2 %>% select(nconst, mainProfession) %>% distinct(),
+            by = "nconst")
+
+#Summary by profession
+profession_summary <- centrality_prof %>%
+  group_by(mainProfession) %>%
+  summarise(
+    n_people = n(),
+    mean_degree = mean(degree, na.rm = TRUE),
+    mean_eigenvector = mean(eigenvector, na.rm = TRUE),
+    median_degree = median(degree, na.rm = TRUE)
+  ) %>%
+  filter(n_people > 100) %>%   #keep only well-represented professions
+  arrange(desc(mean_eigenvector))
+
+#profession_summary
+head(profession_summary,6) #Table 2
+tail(profession_summary,5) #Table 3
+
+#df2 %>% filter(mainProfession %in% "archive_footage") %>% distinct() %>% head(5)
+```
+
+## Table of Clustering Coefficients (Profession)
+
+```{r, echo=FALSE}
+#Clustering coefficient
+clust_coef <- transitivity(g_people, type = "local", isolates = "zero")
+
+centrality_df2 <- data.frame(
+  nconst = names(clust_coef),
+  clustering = clust_coef
+)
+
+centrality_prof2 <- centrality_df2 %>%
+  left_join(df %>% select(nconst, mainProfession) %>% distinct(),
+            by = "nconst")
+
+profession_struct_summary <- centrality_prof2 %>%
+  group_by(mainProfession) %>%
+  summarise(
+    n_people = n(),
+    mean_clustering = mean(clustering, na.rm = TRUE)
+  ) %>%
+  filter(n_people > 100) %>%  
+  arrange(desc(mean_clustering))
+
+#profession_struct_summary
+head(profession_struct_summary, 5) #Table 4
+tail(profession_struct_summary, 5) #Table 5
+```
+
+## Table of Degree Centrality (Genre)
+
+```{r, echo=FALSE}
+deg_cen <- degree(g_people, mode = "all")
+eig_cen <- eigen_centrality(g_people)$vector
+
+#Centrality dataframe
+centrality_df <- data.frame(
+  nconst = names(deg_cen),
+  degree = deg_cen,
+  eigenvector = eig_cen
+)
+
+#Join genre info instead of profession
+centrality_genre <- centrality_df %>%
+  left_join(df2 %>% select(nconst, genres) %>% distinct(),
+            by = "nconst")
+
+#Summary by genre (only genres with at least 100 people)
+genre_summary <- centrality_genre %>%
+  group_by(genres) %>%
+  summarise(
+    n_people = n(),
+    mean_degree = mean(degree, na.rm = TRUE),
+    mean_eigenvector = mean(eigenvector, na.rm = TRUE),
+    median_degree = median(degree, na.rm = TRUE)
+  ) %>%
+  filter(n_people > 100) %>%
+  arrange(desc(mean_degree))
+
+genre_summary
+head(genre_summary, 5) #Table 6
+tail(genre_summary, 5) #Table 7
+```
+
+## Table of Cluster Coefficients (Genre)
+
+```{r, echo=FALSE}
+centrality_prof3 <- centrality_df2 %>%
+  left_join(df %>% select(nconst, genres) %>% distinct(),
+            by = "nconst")
+
+profession_struct_summary3 <- centrality_prof3 %>%
+  group_by(genres) %>%
+  summarise(
+    n_people = n(),
+    mean_clustering = mean(clustering, na.rm = TRUE)
+  ) %>%
+  filter(n_people > 100) %>%  
+  arrange(desc(mean_clustering))
+
+#profession_struct_summary3
+head(profession_struct_summary3, 5) #Table 8
+tail(profession_struct_summary3, 5) #Table 9
+```
