@@ -50,6 +50,7 @@ df <- read.csv("~/merged_df.csv")
 
 df <- df %>%
   mutate(genres = str_split(genres, ",") |> sapply(`[`, 1))
+#Some movies have multiple genres, I decided to just keep the first genre mentioned for each movie to maintain consistency and avoid hundreds of possible genre combinations.
 ```
 
 ## Eigenvector Centrality (Profession)
@@ -81,12 +82,22 @@ deg_cen <- degree(g_people, mode = "all")
 #sort(deg_cen, decreasing = TRUE)[1:10]
 ```
 
-```{r, echo=FALSE}
-df %>%
+```{r, echo=FALSE, warning=FALSE, message=FALSE}
+tbl1 <- df %>%
   group_by(primaryTitle) %>%
   summarise(n_people = n_distinct(nconst)) %>%
   arrange(desc(n_people)) %>%
   head(6)
+
+colnames(tbl1) <- c("Title", "Number of People")
+
+library(kableExtra)
+
+kbl(tbl1, 
+    format = "latex", 
+    booktabs = TRUE,
+) %>%
+  kable_styling(latex_options = c("hold_position"))
 #Table 1
 ```
 
@@ -138,7 +149,7 @@ deg_cen <- degree(g_people, mode = "all")
 
 ## Table of Mean Centrality Per Profession
 
-```{r, echo=FALSE}
+```{r, echo=FALSE, warning=FALSE, message=FALSE}
 # Centralities
 deg_cen <- degree(g_people, mode = "all")
 eig_cen <- eigen_centrality(g_people)$vector
@@ -166,11 +177,40 @@ profession_summary <- centrality_prof %>%
   filter(n_people > 100) %>%   #keep only well-represented professions
   arrange(desc(mean_eigenvector))
 
-colnames(profession_summary) <- c("Genre", "Number of People", "Mean Degree", "Mean Eigenvector")
+colnames(profession_summary) <- c("Main Profession", "Number of People", "Mean Degree", "Mean Eigenvector")
 
 #profession_summary
-head(profession_summary,6) #Table 2
-tail(profession_summary,5) #Table 3
+h <- na.omit(head(profession_summary,6)) #Table 2
+t <- tail(profession_summary,5) #Table 3
+
+prof_cent_df <- rbind(h,t)
+
+#library(webshot2)
+
+#save_kable(
+#  kbl(prof_cent_df, format = "html") %>% 
+#    kable_classic(),
+#  file = "prof_cent_df.png"
+#)
+
+prof_cent_df$`Mean Eigenvector` <- format(
+  prof_cent_df$`Mean Eigenvector`,
+  scientific = TRUE,
+  digits = 3
+)
+
+prof_cent_df$`Mean Degree` <- format(
+  prof_cent_df$`Mean Degree`,
+  digits = 3
+)
+
+kbl(prof_cent_df, 
+    format = "latex", 
+    booktabs = TRUE,
+    #caption = "Head and Tail of Profession Structure Summary"
+) %>%
+  kable_styling(latex_options = c("hold_position"))
+
 
 #df2 %>% filter(mainProfession %in% "archive_footage") %>% distinct() %>% head(5)
 ```
@@ -201,8 +241,17 @@ profession_struct_summary <- centrality_prof2 %>%
 
 colnames(profession_struct_summary) <- c("Main Profession", "Number of People", "Mean Local Clustering")
 #profession_struct_summary
-head(profession_struct_summary, 5) #Table 4
-tail(profession_struct_summary, 5) #Table 5
+h <- head(profession_struct_summary, 5) #Table 4
+t<- tail(profession_struct_summary, 5) #Table 5
+prof_cluster_df <- rbind(h, t)
+
+kbl(prof_cluster_df, 
+    format = "latex", 
+    booktabs = TRUE,
+    #caption = "Head and Tail of Profession Structure Summary",
+    digits = 3
+) %>%
+  kable_styling(latex_options = c("hold_position"))
 ```
 
 ## Table of Degree Centrality (Genre)
@@ -238,8 +287,28 @@ genre_summary <- centrality_genre %>%
 colnames(genre_summary) <- c("Genre", "Number of People", "Mean Degree", "Mean Eigenvector")
 
 #genre_summary
-head(genre_summary, 5) #Table 6
-tail(genre_summary, 5) #Table 7
+h <- head(genre_summary, 5) #Table 6
+t <- tail(genre_summary, 5) #Table 7
+
+genre_cent_df <- rbind(h, t)
+
+genre_cent_df$`Mean Eigenvector` <- format(
+  genre_cent_df$`Mean Eigenvector`,
+  scientific = TRUE,
+  digits = 3
+)
+
+genre_cent_df$`Mean Degree` <- format(
+  genre_cent_df$`Mean Degree`,
+  digits = 3
+)
+
+kbl(genre_cent_df, 
+    format = "latex", 
+    booktabs = TRUE,
+    #caption = "Head and Tail of Genre Structure Summary"
+) %>%
+  kable_styling(latex_options = c("hold_position"))
 ```
 
 ## Table of Cluster Coefficients (Genre)
@@ -261,6 +330,16 @@ profession_struct_summary3 <- centrality_prof3 %>%
 colnames(profession_struct_summary3) <- c("Genre", "Number of People", "Mean Local Clustering")
 
 #profession_struct_summary3
-head(profession_struct_summary3, 5) #Table 8
-tail(profession_struct_summary3, 5) #Table 9
+h <- head(profession_struct_summary3, 5) #Table 8
+t <- tail(profession_struct_summary3, 5) #Table 9
+
+genre_cluster_df <- rbind(h, t)
+
+kbl(genre_cluster_df, 
+    format = "latex", 
+    booktabs = TRUE,
+    #caption = "Head and Tail of Genre Structure Summary",
+    digits = 3
+) %>%
+  kable_styling(latex_options = c("hold_position"))
 ```
