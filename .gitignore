@@ -21,6 +21,7 @@
 # RStudio files
 .Rproj.user/
 .Rproj
+film-network-analysis.Rproj
 
 # produced vignettes
 vignettes/*.html
@@ -55,3 +56,5 @@ rsconnect/
 # datasets
 datasets/
 
+# references
+references/
