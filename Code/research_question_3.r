@@ -68,22 +68,38 @@ num_successes <- sum(tmdb_cleaned$roi_percent > 0) # num_successes = 4223
 
 
 
-# Extract main cast (top 5 actors) and store in a new 'stars' column
-splits <- strsplit(tmdb_cleaned$cast, ", ")
-tmdb_cleaned <- tmdb_cleaned %>%
-  mutate(
-    stars = sapply(splits, function(x) {
-      paste(head(x, 5), collapse = ", ")
-    })
-  )
+# new approach solves problem I had that tmdb 'cast' column is not meaningfully sorted like I first assumed.
 
-# at this point 'stars' looks something like: Bob Bergen, Austin Pendleton, Geoff Brooks, Evan Sabara, Daryl Sabara
+# 1. 'actor_frequency' aggregates movie_count by actor_name e.g. (Samuel L. Jackson, 81)
 
-# Create a two mode {movie - actor} network from tmdb_cleaned
-tmdb_actor_movie<- tmdb_cleaned %>%
-  select(imdb_id, title, budget, revenue, roi_percent, release_year, stars) %>%
-  separate_rows(stars, sep = ", ")
+actor_frequency <- tmdb_cleaned %>%
+  select(cast) %>%
+  mutate(cast_list = strsplit(cast, ", ")) %>%
+  tidyr::unnest(cast_list) %>%
+  group_by(cast_list) %>%
+  summarise(movie_count = n()) %>%
+  rename(actor_name = cast_list)
 
-### PROBLEM, tmdb_cleaned 'cast' column is not meaningfully sorted like I first assumed.
+# 2. using 'actor_frequency calculation', keep only the top 5 most prolific actors in a movie (now defined as 'stars')
 
+tmdb_stars_only <- tmdb_cleaned %>%
+  mutate(cast_list = strsplit(cast, ", ")) %>%
+  tidyr::unnest(cast_list) %>%
+  rename(actor_name = cast_list) %>%
+  left_join(actor_frequency, by = "actor_name") %>%
+  group_by(imdb_id) %>%
+  arrange(desc(movie_count)) %>%
+  mutate(rank = row_number()) %>%
+  filter(rank <= 5) %>%
+  ungroup()
 
+# 3. Create a two mode {movie - actor} network 
+tmdb_actor_movie <- tmdb_stars_only %>%
+  select(imdb_id, title, actor_name, budget, revenue, roi_percent, release_year)
+
+# 4. Filter out garbage like "Jr." and other inevitable junk (TO DO: take another look at this later)
+
+tmdb_actor_movie <- tmdb_actor_movie %>%
+  filter(!actor_name %in% c("Jr."))
+
+# tmdb_actor_movie consists of {imdb_id, title, actor_name, budget, revenue, roi_percent, release_year}
