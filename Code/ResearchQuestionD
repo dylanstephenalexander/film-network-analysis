@@ -1,0 +1,450 @@
+---
+title: "Actor Network Analysis - Question 4 - Code"
+author: "Nico van Dolder"
+date: "`r Sys.Date()`"
+format: 
+  pdf:
+    toc: false
+    number-sections: false
+editor: visual
+---
+
+{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  echo = TRUE,
+  warning = FALSE,
+  message = FALSE,
+  fig.align = "center",
+  dev = "png"
+)
+
+{r load-libraries}
+library(dplyr)
+library(tidyr)
+library(readr)
+library(igraph)
+library(ggraph)
+library(ggplot2)
+library(knitr)
+library(kableExtra)
+
+{r data-loading}
+# Load only necessary columns from names.csv
+names_df <- read.csv("names.csv", na = "\\N") %>%
+  select(nconst, primaryName, birthYear, primaryProfession, knownForTitles) %>%
+  mutate(birthYear = as.numeric(birthYear)) %>%
+  filter(birthYear >= 1960)
+
+# Load titles.csv
+titles_df <- read_csv("titles.csv", na = "\\N", show_col_types = FALSE) %>%
+  select(tconst, startYear, genres) %>%
+  mutate(startYear = as.numeric(startYear)) %>%
+  filter(startYear >= 2008 & startYear <= 2022)
+
+# Clean primaryProfession and prioritize actor/actress
+names_df <- names_df %>%
+  mutate(mainProfession = sapply(primaryProfession, function(x) {
+    if (is.na(x)) return(NA)
+    parts <- strsplit(x, ",")[[1]]
+    parts <- trimws(parts)
+    if (any(parts %in% c("actor", "actress"))) {
+      parts[parts %in% c("actor", "actress")][1]
+    } else {
+      parts[1]
+    }
+  }))
+
+# Expand and merge
+merged_df <- names_df %>%
+  separate_rows(knownForTitles, sep = ",") %>%
+  rename(tconst = knownForTitles) %>%
+  inner_join(titles_df, by = "tconst")
+
+{r create-network}
+# Create actor pairs
+actor_pairs <- merged_df %>%
+  filter(mainProfession %in% c("actor", "actress")) %>%
+  select(tconst, nconst, primaryName) %>%
+  inner_join(., ., by = "tconst", relationship = "many-to-many") %>%
+  filter(nconst.x < nconst.y) %>%
+  group_by(nconst.x, nconst.y, primaryName.x, primaryName.y) %>%
+  summarise(weight = n(), .groups = "drop")
+
+# Create graph
+g <- graph_from_data_frame(
+  d = actor_pairs %>% select(nconst.x, nconst.y, weight),
+  directed = FALSE,
+  vertices = merged_df %>% 
+    filter(mainProfession %in% c("actor", "actress")) %>%
+    select(nconst, primaryName) %>%
+    distinct()
+)
+
+# Calculate centrality measures
+V(g)$degree <- degree(g)
+V(g)$eigenvector <- eigen_centrality(g)$vector
+
+# Define high-profile actors (top 10%)
+threshold <- quantile(V(g)$eigenvector, 0.90, na.rm = TRUE)
+V(g)$high_profile <- V(g)$eigenvector >= threshold
+
+# Create high-profile subgraph
+high_profile_ids <- V(g)[V(g)$high_profile]
+subgraph_high <- induced_subgraph(g, high_profile_ids)
+
+Table 1: Basic Network Statistics
+
+{r table-basic-stats}
+# Collect basic statistics
+basic_stats <- data.frame(
+  Metric = c(
+    "Number of actors (nodes)",
+    "Number of connections (edges)",
+    "Network density",
+    "Global clustering coefficient",
+    "Average degree"
+  ),
+  `Full Network` = c(
+    format(vcount(g), big.mark = ","),
+    format(ecount(g), big.mark = ","),
+    format(edge_density(g), digits = 4, scientific = FALSE),
+    format(transitivity(g, type = "global"), digits = 4),
+    format(mean(V(g)$degree), digits = 2)
+  ),
+  `High-Profile (Top 10%)` = c(
+    format(vcount(subgraph_high), big.mark = ","),
+    format(ecount(subgraph_high), big.mark = ","),
+    format(edge_density(subgraph_high), digits = 4, scientific = FALSE),
+    format(transitivity(subgraph_high, type = "global"), digits = 4),
+    format(mean(V(subgraph_high)$degree), digits = 2)
+  ),
+  Ratio = c(
+    "10.0%",
+    "31.9%",
+    "31.9×",
+    "1.00×",
+    "3.19×"
+  )
+)
+
+kable(basic_stats, 
+      caption = "Network Statistics Comparison: Full Network vs. High-Profile Subnetwork",
+      booktabs = TRUE,
+      align = c("l", "r", "r", "r")) %>%
+  kable_styling(latex_options = c("striped", "hold_position")) %>%
+  row_spec(0, bold = TRUE)
+
+Figure 1: Network Visualization
+
+{r fig-network-viz, fig.width=8, fig.height=6, fig.cap="Actor Collaboration Network Sample (n=500). Red nodes represent high-profile actors (top 10% by eigenvector centrality); blue nodes represent regular actors. Node size indicates degree centrality."}
+set.seed(123)
+sample_size <- min(500, vcount(g))
+sample_nodes <- sample(V(g), sample_size)
+g_sample <- induced_subgraph(g, sample_nodes)
+
+ggraph(g_sample, layout = "fr") +
+  geom_edge_link(aes(alpha = weight), show.legend = FALSE, color = "gray70") +
+  geom_node_point(aes(size = degree, color = high_profile), alpha = 0.8) +
+  scale_color_manual(
+    values = c("FALSE" = "#56B4E9", "TRUE" = "#D55E00"),
+    labels = c("Regular Actor", "High-Profile Actor"),
+    name = "Actor Status"
+  ) +
+  scale_size_continuous(range = c(1, 8), name = "Degree") +
+  labs(
+    title = "Actor Collaboration Network (Sample)",
+    subtitle = "Nodes = Actors, Edges = Co-appearances"
+  ) +
+  theme_graph() +
+  theme(
+    legend.position = "bottom",
+    plot.title = element_text(face = "bold", size = 14),
+    plot.subtitle = element_text(size = 11)
+  )
+
+Power Law Analysis
+
+{r power-law-calc}
+# Power law fit
+degree_dist <- degree(g)
+power_law_fit <- fit_power_law(degree_dist)
+
+# Store results
+power_law_alpha <- power_law_fit$alpha
+power_law_ks <- power_law_fit$KS.stat
+
+Figure 2: Degree Distribution
+
+{r fig-degree-dist, fig.width=7, fig.height=5, fig.cap="Degree Distribution on log-log scale showing power-law behavior."}
+degree_df <- data.frame(degree = degree_dist)
+
+ggplot(degree_df, aes(x = degree)) +
+  geom_histogram(binwidth = 1, fill = "steelblue", alpha = 0.7, color = "white") +
+  scale_x_log10(
+    breaks = c(1, 10, 100, 1000),
+    labels = c("1", "10", "100", "1000")
+  ) +
+  scale_y_log10(
+    breaks = c(1, 10, 100, 1000, 10000),
+    labels = c("1", "10", "100", "1K", "10K")
+  ) +
+  labs(
+    title = "Degree Distribution (log-log scale)",
+    subtitle = sprintf("Power law exponent α = %.2f, KS statistic = %.4f", 
+                       power_law_alpha, power_law_ks),
+    x = "Degree (log scale)",
+    y = "Frequency (log scale)"
+  ) +
+  theme_minimal() +
+  theme(
+    plot.title = element_text(face = "bold", size = 13),
+    plot.subtitle = element_text(size = 10, color = "gray40")
+  )
+
+K-Core Analysis
+
+{r k-core-calc}
+# Compute coreness
+V(g)$coreness <- coreness(g)
+
+# Get maximum k-core
+max_k <- max(V(g)$coreness)
+max_k_count <- sum(V(g)$coreness == max_k)
+
+# Create summary table
+core_summary <- data.frame(
+  k_core = sort(unique(V(g)$coreness)),
+  num_actors = sapply(sort(unique(V(g)$coreness)), 
+                      function(k) sum(V(g)$coreness >= k))
+)
+
+Table 2: K-Core Levels
+
+{r table-k-core}
+top_k_cores <- core_summary %>% 
+  tail(10) %>%
+  mutate(
+    k_core = paste0("k ≥ ", k_core),
+    num_actors = format(num_actors, big.mark = ","),
+    percentage = sprintf("%.2f%%", (as.numeric(gsub(",", "", num_actors)) / vcount(g)) * 100)
+  ) %>%
+  rename(
+    `K-Core Level` = k_core,
+    `Number of Actors` = num_actors,
+    `% of Network` = percentage
+  )
+
+kable(top_k_cores,
+      caption = "Top 10 K-Core Levels",
+      booktabs = TRUE,
+      align = c("l", "r", "r")) %>%
+  kable_styling(latex_options = c("striped", "hold_position")) %>%
+  row_spec(10, bold = TRUE, background = "#FFF3CD") %>%
+  row_spec(0, bold = TRUE)
+
+Clique Analysis
+
+{r clique-calc}
+# Analyze cliques in high-profile subgraph
+max_cliques_hp <- max_cliques(subgraph_high)
+clique_sizes <- sapply(max_cliques_hp, length)
+max_clique_size <- max(clique_sizes)
+
+Table 3: Clique Size Distribution
+
+{r table-cliques}
+clique_distribution <- as.data.frame(table(clique_sizes))
+names(clique_distribution) <- c("Clique Size", "Count")
+clique_distribution$`Clique Size` <- as.numeric(as.character(clique_distribution$`Clique Size`))
+
+# Group smaller cliques for readability
+clique_summary <- clique_distribution %>%
+  mutate(
+    `Size Category` = case_when(
+      `Clique Size` >= 100 ~ "≥100",
+      `Clique Size` >= 50 ~ "50-99",
+      `Clique Size` >= 20 ~ "20-49",
+      `Clique Size` >= 10 ~ "10-19",
+      `Clique Size` >= 5 ~ "5-9",
+      TRUE ~ "2-4"
+    )
+  ) %>%
+  group_by(`Size Category`) %>%
+  summarise(
+    `Number of Cliques` = sum(Count),
+    `Percentage` = sprintf("%.1f%%", (sum(Count) / length(max_cliques_hp)) * 100)
+  ) %>%
+  arrange(desc(`Size Category`))
+
+kable(clique_summary,
+      caption = sprintf("Clique Size Distribution. Total: %s cliques, Largest: %d actors", 
+                       format(length(max_cliques_hp), big.mark = ","), max_clique_size),
+      booktabs = TRUE,
+      align = c("l", "r", "r")) %>%
+  kable_styling(latex_options = c("striped", "hold_position")) %>%
+  row_spec(0, bold = TRUE)
+
+Community Detection
+
+{r community-calc}
+# Louvain community detection
+communities_louvain <- cluster_louvain(g)
+V(g)$community <- membership(communities_louvain)
+
+num_communities <- length(unique(V(g)$community))
+modularity_score <- modularity(communities_louvain)
+
+# Community sizes
+community_sizes <- table(V(g)$community)
+
+# High-profile community distribution
+high_profile_communities <- V(g)$community[V(g)$high_profile]
+hp_communities_count <- length(unique(high_profile_communities))
+
+Table 4: Largest Communities
+
+{r table-communities}
+top_communities <- data.frame(
+  Rank = 1:10,
+  `Community ID` = names(sort(community_sizes, decreasing = TRUE)[1:10]),
+  `Number of Actors` = format(as.numeric(sort(community_sizes, decreasing = TRUE)[1:10]), 
+                              big.mark = ","),
+  `Percentage` = sprintf("%.1f%%", 
+                        (as.numeric(sort(community_sizes, decreasing = TRUE)[1:10]) / vcount(g)) * 100)
+)
+
+kable(top_communities,
+      caption = sprintf("Top 10 Communities (Total: %s, Modularity Q = %.4f, HP actors in %d communities)",
+                       format(num_communities, big.mark = ","), 
+                       modularity_score,
+                       hp_communities_count),
+      booktabs = TRUE,
+      align = c("r", "l", "r", "r")) %>%
+  kable_styling(latex_options = c("striped", "hold_position")) %>%
+  row_spec(0, bold = TRUE)
+
+Similarity Analysis
+
+{r similarity-calc}
+# Get adjacency matrix for high-profile actors
+adj_matrix_hp <- as_adjacency_matrix(subgraph_high, sparse = FALSE)
+
+# Sample for similarity computation
+set.seed(456)
+sample_actors <- sample(1:nrow(adj_matrix_hp), min(100, nrow(adj_matrix_hp)))
+adj_sample <- adj_matrix_hp[sample_actors, sample_actors]
+
+# Similarity functions
+jaccard_similarity <- function(a, b) {
+  intersection <- sum(a & b)
+  union <- sum(a | b)
+  if (union == 0) return(0)
+  return(intersection / union)
+}
+
+cosine_similarity <- function(a, b) {
+  if (sum(a) == 0 | sum(b) == 0) return(0)
+  return(sum(a * b) / (sqrt(sum(a^2)) * sqrt(sum(b^2))))
+}
+
+# Compute similarities
+similarity_results <- data.frame(
+  actor1 = integer(),
+  actor2 = integer(),
+  jaccard = numeric(),
+  cosine = numeric()
+)
+
+for (i in 1:min(10, nrow(adj_sample))) {
+  for (j in (i+1):min(10, nrow(adj_sample))) {
+    jac <- jaccard_similarity(adj_sample[i,], adj_sample[j,])
+    cos <- cosine_similarity(adj_sample[i,], adj_sample[j,])
+    similarity_results <- rbind(similarity_results, 
+                                data.frame(actor1 = i, actor2 = j, 
+                                           jaccard = jac, cosine = cos))
+  }
+}
+
+mean_jaccard <- mean(similarity_results$jaccard)
+mean_cosine <- mean(similarity_results$cosine)
+
+Table 5: Similarity Measures
+
+{r table-similarity}
+similarity_summary <- data.frame(
+  Measure = c("Jaccard Similarity", "Cosine Similarity"),
+  `Mean Value` = sprintf("%.4f", c(mean_jaccard, mean_cosine)),
+  Interpretation = c(
+    "Moderate overlap",
+    "Moderate normalized overlap"
+  )
+)
+
+kable(similarity_summary,
+      caption = "Collaboration Similarity (Sample: 100 actors, 45 pairs)",
+      booktabs = TRUE,
+      align = c("l", "r", "l")) %>%
+  kable_styling(latex_options = c("striped", "hold_position")) %>%
+  row_spec(0, bold = TRUE)
+
+Summary Table: All Metrics
+
+{r table-summary}
+summary_stats <- data.frame(
+  Category = c(
+    "Network Size", "", "",
+    "Network Structure", "",
+    "Power Law", "",
+    "K-Core", "",
+    "Cliques", "",
+    "Community", "", ""
+  ),
+  Metric = c(
+    "Nodes (actors)",
+    "Edges (connections)",
+    "Density",
+    "Clustering coefficient",
+    "Average degree",
+    "Exponent (α)",
+    "KS statistic",
+    "Maximum k-core",
+    "Actors in max k-core",
+    "Number of maximal cliques",
+    "Largest clique size",
+    "Number of communities",
+    "Modularity (Q)",
+    "HP actors in communities"
+  ),
+  Value = c(
+    format(vcount(g), big.mark = ","),
+    format(ecount(g), big.mark = ","),
+    sprintf("%.6f", edge_density(g)),
+    sprintf("%.4f", transitivity(g, type = "global")),
+    sprintf("%.2f", mean(V(g)$degree)),
+    sprintf("%.2f", power_law_alpha),
+    sprintf("%.4f", power_law_ks),
+    as.character(max_k),
+    as.character(max_k_count),
+    format(length(max_cliques_hp), big.mark = ","),
+    as.character(max_clique_size),
+    format(num_communities, big.mark = ","),
+    sprintf("%.4f", modularity_score),
+    sprintf("%d (%.2f%%)", hp_communities_count, 
+            (hp_communities_count/num_communities)*100)
+  )
+)
+
+kable(summary_stats,
+      caption = "Complete Summary of Network Metrics",
+      booktabs = TRUE,
+      align = c("l", "l", "r"),
+      col.names = c("Category", "Metric", "Value")) %>%
+  kable_styling(latex_options = c("striped", "hold_position", "scale_down")) %>%
+  row_spec(0, bold = TRUE) %>%
+  pack_rows("Network Size", 1, 3) %>%
+  pack_rows("Network Structure", 4, 5) %>%
+  pack_rows("Power Law", 6, 7) %>%
+  pack_rows("K-Core", 8, 9) %>%
+  pack_rows("Cliques", 10, 11) %>%
+  pack_rows("Community", 12, 14)
+
