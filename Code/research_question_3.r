@@ -143,4 +143,61 @@ movie_network <- graph_from_data_frame(movie_edges, directed = FALSE)
 
 
 
+### CALCULATE CENTRALITIES
+
+
+
+
+# the number of other movies in the network that a movie shares 1 or more of its 'stars' with.
+degree_centrality <- degree(movie_network, mode = "all")
+
+# a measure of how well-connected the movies that it shares 1 or more of its 'stars' with are in the network.
+eigen_centrality <- eigen_centrality(movie_network)$vector
+
+# movie_centrality is a dataframe containing both centrality metrics
+movie_centrality <- data.frame(
+  imdb_id = names(degree_centrality),
+  degree = degree_centrality,
+  eigenvector = eigen_centrality)
+
+# add 'title' to movie_centrality
+movie_centrality <- movie_centrality %>%
+  left_join(
+    tmdb_actor_movie %>% select(imdb_id, title) %>% distinct(),
+    by = "imdb_id"
+  ) %>%
+  select(imdb_id, title, degree, eigenvector)
+
+
+
+
+### TOP 10 movies by Degree
+# imdb_id                                        title degree eigenvector
+# 1    tt0375568                                    Astro Boy    262   0.9687563
+# 2    tt0462322                                   Grindhouse    260   0.7612072
+# 3    tt0145487                                   Spider-Man    259   1.0000000
+# 4    tt0413300                                 Spider-Man 3    259   1.0000000
+# 5    tt8385148                    Hitman's Wife's Bodyguard    259   0.8888622
+# 6    tt0316654                                 Spider-Man 2    249   0.9601488
+# 7    tt1860353                                        Turbo    249   0.9915584
+# 8    tt0257076                                     S.W.A.T.    245   0.8999215
+# 9   tt26443597                                   Zootopia 2    244   0.7753177
+# 10   tt4154756                       Avengers: Infinity War    237   0.9258646
+
+### TOP 10 movies by Eigenvector
+# imdb_id                                        title degree eigenvector
+# 1    tt0413300                                 Spider-Man 3    259   1.0000000
+# 2    tt0145487                                   Spider-Man    259   1.0000000
+# 3    tt1860353                                        Turbo    249   0.9915584
+# 4    tt0375568                                    Astro Boy    262   0.9687563
+# 5    tt4154796                            Avengers: Endgame    236   0.9672482
+# 6    tt0316654                                 Spider-Man 2    249   0.9601488
+# 7    tt4154756                       Avengers: Infinity War    237   0.9258646
+# 8    tt2395427                      Avengers: Age of Ultron    225   0.9141322
+# 9    tt0257076                                     S.W.A.T.    245   0.8999215
+# 10   tt8385148                    Hitman's Wife's Bodyguard    259   0.8888622
+
+
+
+
 
