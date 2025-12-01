@@ -1,13 +1,16 @@
-# load libraries
-install.packages(c("data.table", "dplyr", "tidyr"))
-library(data.table)
-library(tidyr)
-library(dplyr)
+# install packages
+install.packages(c("data.table", "dplyr", "tidyr", "igraph"))
 
 # import datasets
 imdb_names <- fread('/Users/dylanalexander/Desktop/term 1 2025-26/cosc 421/datasets/imdb_dataset/names.csv')
 imdb_titles <- fread('/Users/dylanalexander/Desktop/term 1 2025-26/cosc 421/datasets/imdb_dataset/titles.csv')
 tmdb <- fread('/Users/dylanalexander/Desktop/term 1 2025-26/cosc 421/datasets/tmdb_dataset/tmdb_dataset.csv')
+
+# load libraries
+library(data.table)
+library(tidyr)
+library(dplyr)
+library(igraph)
 
 colnames(imdb_names)
 colnames(imdb_titles)
@@ -93,6 +96,13 @@ tmdb_stars_only <- tmdb_cleaned %>%
   filter(rank <= 5) %>%
   ungroup()
 
+
+
+### CREATE ACTOR - MOVIE NETWORK
+
+
+
+
 # 3. Create a two mode {movie - actor} network 
 tmdb_actor_movie <- tmdb_stars_only %>%
   select(imdb_id, title, actor_name, budget, revenue, roi_percent, release_year)
@@ -103,3 +113,34 @@ tmdb_actor_movie <- tmdb_actor_movie %>%
   filter(!actor_name %in% c("Jr."))
 
 # tmdb_actor_movie consists of {imdb_id, title, actor_name, budget, revenue, roi_percent, release_year}
+
+
+
+
+### CREATE MOVIE - MOVIE NETWORK
+
+
+
+
+# create edges between movie pairs, one for each actor the 2 movies share: {movie1, movie2, actor_name}
+movie_shared_actors <- tmdb_actor_movie %>%
+  inner_join(tmdb_actor_movie %>% select(imdb_id, actor_name), by = "actor_name") %>%
+  filter(imdb_id.x < imdb_id.y) %>%
+  select(movie1 = imdb_id.x, movie2 = imdb_id.y, actor_name)
+
+# Aggregate shared_actor count by movie pair
+movie_edges <- movie_shared_actors %>%
+  group_by(movie1, movie2) %>%
+  summarise(shared_actors = n()) 
+
+# Sort by shared_actor count (descending)
+movie_edges %>%
+  arrange(desc(shared_actors)) %>%
+  print(n = 100)
+
+# Create the movie - movie network
+movie_network <- graph_from_data_frame(movie_edges, directed = FALSE)
+
+
+
+
