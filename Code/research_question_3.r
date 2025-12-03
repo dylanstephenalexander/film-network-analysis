@@ -19,6 +19,23 @@ colnames(tmdb)
 
 
 
+### KEY
+
+### IMPORTANT DATASETS
+# 1. tmdb_cleaned: base dataset with ROI
+# 2. movie_centrality: has the degree and eigenvector centrality scores from the movie-movie network
+# 3. movie_analysis: combination of 1. and 2. for correlation analysis
+
+### INTERMEDIATE-STEP DATASETS
+# 1. tmdb_actor_movie: actor-movie network: {imdb_id, title, actor_name, budget, revenue, roi_percent, release_year}
+# 2. movie_edges: fed into movie_network
+# 3. movie_network: used to calculate degree and eigenvector centrality scores
+
+
+
+
+
+
 ### CLEAN UP DATASET ###
 
 
@@ -42,11 +59,20 @@ tmdb_cleaned <- tmdb %>%
     revenue > 0,
     !is.na(release_year)
   )
+  
 
 # calculating ROI field: ROI = ((revenue - budget) / budget) * 100
 
 tmdb_cleaned <- tmdb_cleaned %>%
   mutate(roi_percent = ((revenue - budget) / budget) * 100)
+
+# remove junk from tmdb_cleaned
+
+tmdb_cleaned <- tmdb_cleaned %>% select(-poster_path, -music_composer, -imdb_votes)
+tmdb_cleaned <- tmdb_cleaned %>% select(-vote_count, -vote_average)
+tmdb_cleaned <- tmdb_cleaned %>% select(-writers, -producers)
+tmdb_cleaned <- tmdb_cleaned %>% select(-director, -director_of_photography, -overview)
+tmdb_cleaned <- tmdb_cleaned %>% select(-tagline, -production_companies)
 
 
 
@@ -82,6 +108,7 @@ tmdb_cleaned <- tmdb_cleaned %>%
     labels = c("Failure", "Flop", "In-Betweener", "Success", "Smash-Hit")
   ))
 
+head(tmdb_cleaned, 1)
 
 num_failure <- sum(tmdb_cleaned$roi_category == "Failure") # num_failure = 7609
 num_flop <- sum(tmdb_cleaned$roi_category == "Flop") # num_flop = 1904
@@ -198,14 +225,11 @@ movie_centrality <- movie_centrality %>%
 
 movie_centrality %>%
   arrange(desc(degree)) 
-  print(n = 100)%>%
-    
+
 # print by eigenvector centrality descending
 
 movie_centrality %>%
   arrange(desc(eigenvector)) 
-  print(n = 100)%>%
-
 
 ### TOP 10 movies by Degree
 # imdb_id                                        title degree eigenvector
@@ -232,6 +256,7 @@ movie_centrality %>%
 # 8    tt2395427                      Avengers: Age of Ultron    225   0.9141322
 # 9    tt0257076                                     S.W.A.T.    245   0.8999215
 # 10   tt8385148                    Hitman's Wife's Bodyguard    259   0.8888622
+
 
 
 
