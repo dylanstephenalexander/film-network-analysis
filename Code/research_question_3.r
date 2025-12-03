@@ -68,24 +68,24 @@ tmdb_cleaned <- tmdb_cleaned %>%
 
 # remove junk from tmdb_cleaned
 
-tmdb_cleaned <- tmdb_cleaned %>% select(-poster_path, -music_composer, -imdb_votes)
-tmdb_cleaned <- tmdb_cleaned %>% select(-vote_count, -vote_average)
-tmdb_cleaned <- tmdb_cleaned %>% select(-writers, -producers)
-tmdb_cleaned <- tmdb_cleaned %>% select(-director, -director_of_photography, -overview)
-tmdb_cleaned <- tmdb_cleaned %>% select(-tagline, -production_companies)
+# tmdb_cleaned <- tmdb_cleaned %>% select(-poster_path, -music_composer, -imdb_votes)
+# tmdb_cleaned <- tmdb_cleaned %>% select(-vote_count, -vote_average)
+# tmdb_cleaned <- tmdb_cleaned %>% select(-writers, -producers)
+# tmdb_cleaned <- tmdb_cleaned %>% select(-director, -director_of_photography, -overview)
+# tmdb_cleaned <- tmdb_cleaned %>% select(-tagline, -production_companies)
 
 
 
 
-### DEFINE FLOP, SUCCESS ### 
+### DEFINE FAILURE, FLOP, IN-BETWEENER, SUCCESS, SMASH-HIT ### 
 
 
 
 
-num_moves <- nrow(tmdb_cleaned) # num movies = 11832 
-min_roi_percent <- min(tmdb_cleaned$roi_percent) # max_roi_percent = 49900%
-max_roi_percent <- max(tmdb_cleaned$roi_percent) # max_roi_percent = -100%
-mean_roi_percent <- mean(tmdb_cleaned$roi_percent) # mean_roi_percent = 68.4601%
+num_movies <- nrow(tmdb_cleaned)                                          # num movies = 11832 
+min_roi_percent <- min(tmdb_cleaned$roi_percent)                          # max_roi_percent = 49900%
+max_roi_percent <- max(tmdb_cleaned$roi_percent)                          # max_roi_percent = -100%
+mean_roi_percent <- mean(tmdb_cleaned$roi_percent)                        # mean_roi_percent = 68.4601%
 
 # conventional wisdom states movies often need a box office revenue of 2.5x or 3x of its budget in order to break-even, after marketing and other costs
 # the below classifications for movie financial outcomes have been devised with this in mind
@@ -109,12 +109,13 @@ tmdb_cleaned <- tmdb_cleaned %>%
   ))
 
 head(tmdb_cleaned, 1)
+nrow(tmdb_cleaned) # 11832
 
-num_failure <- sum(tmdb_cleaned$roi_category == "Failure") # num_failure = 7609
-num_flop <- sum(tmdb_cleaned$roi_category == "Flop") # num_flop = 1904
-num_in_betweener <- sum(tmdb_cleaned$roi_category == "In-Betweener") # num_in_betweener = 1019
-num_success <- sum(tmdb_cleaned$roi_category == "Success") # num_success = 768
-num_smash_hit <- sum(tmdb_cleaned$roi_category == "Smash-Hit") # num_smash_hit = 532
+num_failure <- sum(tmdb_cleaned$roi_category == "Failure")                # num_failure = 7609
+num_flop <- sum(tmdb_cleaned$roi_category == "Flop")                      # num_flop = 1904
+num_in_betweener <- sum(tmdb_cleaned$roi_category == "In-Betweener")      # num_in_betweener = 1019
+num_success <- sum(tmdb_cleaned$roi_category == "Success")                # num_success = 768
+num_smash_hit <- sum(tmdb_cleaned$roi_category == "Smash-Hit")            # num_smash_hit = 532
 
 
 
@@ -260,6 +261,72 @@ movie_centrality %>%
 
 
 
+### COMBINE DATASETS
+
+
+
+
+# 1. tmdb_cleaned (base dataset with roi_percent (i.e. 900.457) and roi_category (i.e. Smash-Hit))
+# with
+# 2. movie_centrality: has the degree and eigenvector centrality scores from the movie-movie network
+
+
+
+
+movie_analysis <- tmdb_cleaned %>%
+  select(imdb_id, title, budget, revenue, roi_percent, roi_category, release_year) %>%
+  inner_join(movie_centrality, by = c("imdb_id", "title"))
+
+
+# MANUALLY INSPECT movie_analysis (combined tmdb_cleaned with movie_centrality)
+#  movie_by_roi_category -> top 50 movies in each category by ROI
+
+category_order <- c("Smash-Hit", "Success", "In-Betweener", "Flop", "Failure")
+
+movie_by_roi_category <- movie_analysis %>%
+  mutate(roi_category = factor(roi_category, levels = category_order)) %>%
+  group_by(roi_category) %>%
+  arrange(desc(roi_percent)) %>%
+  slice_head(n = 50) %>%
+  ungroup() %>%
+  arrange(roi_category, desc(roi_percent)) %>%
+  select(title, roi_percent, roi_category, budget, revenue, degree, eigenvector)
+
+print(movie_by_roi_category, n = 250)
+
+# mean_degree = mean_degree_centrality. Same goes for all the rest
+centrality_by_outcome <- movie_analysis %>%
+  group_by(roi_category) %>%
+  summarise(
+    count = n(),
+    mean_degree = mean(degree),
+    median_degree = median(degree),
+    mean_eigenvector = mean(eigenvector),
+    median_eigenvector = median(eigenvector)
+  )
+
+print(centrality_by_outcome)
+
+#  roi_category count mean_degree median_degree mean_eigenvector median_eigenvector
+#  <fct>        <int>       <dbl>         <dbl>            <dbl>              <dbl>
+#  1 Failure       2757        51.8          41              0.114             0.0544
+#  2 Flop          1863        69.2          63              0.160             0.106 
+#  3 In-Betweener   998        73.5          68              0.177             0.123 
+#  4 Success        755        74.2          70              0.184             0.125 
+#  5 Smash-Hit      520        55.9          39.5            0.134             0.0438
+
+
+# Pretty interesting findings here actually.
+# Failures are not very well connected at all, which I expected. But Smash-Hits are actually less-well-connected than Failures!
+# Putting it all in context, it appears a well-connected cast may provide a floor on how badly a movie can perform (again, intuitive)
+# However, it may also be putting a ceiling on how well a movie can perform.
+# This suggests a sort of 'safety' vs 'innovation' trade-off in cast selection. 
+# Absolute Smash-Hits, like a Harry Potter, often feature actors that were previously relatively unknown, and have their entire careers completely defined by that one role.
+# in contrast, a movie with a safer, more-central, cast selection (think a Dwayne Johnson movie), are more protected against outright Failure, but are less likely to 
+# adorn themselves to their audiences. Perhaps they're safer and more predictable. Less memorable.
+
+# another factor with this could actually be the effect of such a heavy salary-budget on ROI? a high-budget blockbuster is kind of handicapped by it's budget in terms of ROI.
+# a movie with a great but lesser-known cast may have an easier time propelling itself into Smash-Hit territory.
 
 
 
