@@ -30,17 +30,20 @@ tmdb <- tmdb %>%
   mutate(release_year = as.numeric(substr(release_date, 1, 4)))
 
 # minimum budget set at $1M, minimum release_year set at 2000, qualifying movies must have budget, revenue, release_year data
+# treat revenue = 0 and / or budget = 0 as missing revenue/budget data, omit these results entirely
 
 tmdb_cleaned <- tmdb %>%
   filter(
     budget >= 1000000,
     release_year >= 2000,
     !is.na(budget),
+    budget > 0,
     !is.na(revenue),
+    revenue > 0,
     !is.na(release_year)
   )
 
-# calculating ROI field
+# calculating ROI field: ROI = ((revenue - budget) / budget) * 100
 
 tmdb_cleaned <- tmdb_cleaned %>%
   mutate(roi_percent = ((revenue - budget) / budget) * 100)
@@ -58,10 +61,33 @@ min_roi_percent <- min(tmdb_cleaned$roi_percent) # max_roi_percent = 49900%
 max_roi_percent <- max(tmdb_cleaned$roi_percent) # max_roi_percent = -100%
 mean_roi_percent <- mean(tmdb_cleaned$roi_percent) # mean_roi_percent = 68.4601%
 
-# 'flop' defined as negative ROI
-num_flops <- sum(tmdb_cleaned$roi_percent < 0) # num_flops = 7591
-# 'success' defined as positive ROI
-num_successes <- sum(tmdb_cleaned$roi_percent > 0) # num_successes = 4223
+# conventional wisdom states movies often need a box office revenue of 2.5x or 3x of its budget in order to break-even, after marketing and other costs
+# the below classifications for movie financial outcomes have been devised with this in mind
+
+# if a movie has 2.5x box office revenue compared to budget, that results in an ROI of 150%
+
+# conventional wisdom also states that for a movie to be classed a "success", that movie needs to hit 100% of all expenses in profit.
+# if break-even is an ROI of 150%, then 100% of all expenses in profit comes out to 300% ROI.
+
+# movies between -Inf and 0% ROI are classed outright as failures
+# movies above 0% ROI but below 150% ROI (the threshold for break-even) are classed as flops
+# movies above 150% ROI (the threshold for break-even) but below 300% ROI (the threshold for success) are classed as an in-betweener
+# movies above 300% ROI (the threshold for success) but below 600% ROI are classed as successes
+# anything above 600% (an estimated 200% net profit return) is classed as a smash-hit
+
+tmdb_cleaned <- tmdb_cleaned %>%
+  mutate(roi_category = cut(
+    roi_percent,
+    breaks = c(-Inf, 0, 150, 300, 600, Inf),
+    labels = c("Failure", "Flop", "In-Betweener", "Success", "Smash-Hit")
+  ))
+
+
+num_failure <- sum(tmdb_cleaned$roi_category == "Failure") # num_failure = 7609
+num_flop <- sum(tmdb_cleaned$roi_category == "Flop") # num_flop = 1904
+num_in_betweener <- sum(tmdb_cleaned$roi_category == "In-Betweener") # num_in_betweener = 1019
+num_success <- sum(tmdb_cleaned$roi_category == "Success") # num_success = 768
+num_smash_hit <- sum(tmdb_cleaned$roi_category == "Smash-Hit") # num_smash_hit = 532
 
 
 
@@ -168,7 +194,17 @@ movie_centrality <- movie_centrality %>%
   ) %>%
   select(imdb_id, title, degree, eigenvector)
 
+## print by degree centrality descending
 
+movie_centrality %>%
+  arrange(desc(degree)) 
+  print(n = 100)%>%
+    
+# print by eigenvector centrality descending
+
+movie_centrality %>%
+  arrange(desc(eigenvector)) 
+  print(n = 100)%>%
 
 
 ### TOP 10 movies by Degree
@@ -196,6 +232,8 @@ movie_centrality <- movie_centrality %>%
 # 8    tt2395427                      Avengers: Age of Ultron    225   0.9141322
 # 9    tt0257076                                     S.W.A.T.    245   0.8999215
 # 10   tt8385148                    Hitman's Wife's Bodyguard    259   0.8888622
+
+
 
 
 
