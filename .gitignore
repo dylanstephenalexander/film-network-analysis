@@ -20,6 +20,8 @@
 
 # RStudio files
 .Rproj.user/
+.Rproj
+film-network-analysis.Rproj
 
 # produced vignettes
 vignettes/*.html
@@ -47,3 +49,12 @@ po/*~
 
 # RStudio Connect folder
 rsconnect/
+
+#macOS
+.DS_Store
+
+# datasets
+datasets/
+
+# references
+references/
