@@ -307,7 +307,7 @@ centrality_by_outcome <- movie_analysis %>%
 
 print(centrality_by_outcome)
 
-#  roi_category count mean_degree median_degree mean_eigenvector median_eigenvector
+#  roi_category  count   mean_degree   median_degree  mean_eigenvector  median_eigenvector
 #  <fct>        <int>       <dbl>         <dbl>            <dbl>              <dbl>
 #  1 Failure       2757        51.8          41              0.114             0.0544
 #  2 Flop          1863        69.2          63              0.160             0.106 
@@ -330,4 +330,65 @@ print(centrality_by_outcome)
 
 
 
+### FIGURES 
 
+
+
+
+centrality_by_outcome # 1. Centrality by Outcome
+
+
+top_ten_by_deg_cent <- movie_analysis %>%
+  arrange(desc(degree)) %>%
+  select(title, roi_category, degree, eigenvector, roi_percent) %>%
+  head(10)
+
+top_ten_by_deg_cent # 2. top 10 movies by degree centrality
+
+
+
+
+top_ten_by_eigen_cent <- movie_analysis %>%
+  arrange(desc(eigenvector)) %>%
+  select(title, roi_category, degree, eigenvector, roi_percent) %>%
+  head(10)
+
+top_ten_by_eigen_cent # 3. top 10 movies by eigenvector centrality
+
+
+
+
+roi_category_distribution <- movie_analysis %>%
+  group_by(roi_category) %>%
+  summarise(count = n(),
+            percentage = n() / nrow(movie_analysis) * 100)
+
+roi_category_distribution # 4. distribution of ROI outcomes (in case i need it, otherwise this is pretty well covered by 1. Centrality by Outcome)
+
+
+
+
+shared_actor_distrib <- movie_edges %>%
+  left_join(tmdb_cleaned %>% select(imdb_id, roi_category), 
+            by = c("movie1" = "imdb_id")) %>%
+  group_by(roi_category) %>%
+  summarise(
+    one_actor_percentage = sum(shared_actors == 1) / n() * 100,
+    two_actors_percentage = sum(shared_actors == 2) / n() * 100,
+    three_plus_actors_percentage = sum(shared_actors >= 3) / n() * 100
+  )
+
+shared_actor_distrib # 5. what percentage of each category's network connections involve 1, 2, or 3+ shared 'stars'?
+
+#  roi_category        one_actor_percentage     two_actors_percentage     three_plus_actors_percentage
+#  <fct>                       <dbl>                 <dbl>                        <dbl>
+#  1 Failure                      98.2                  1.72                        0.105
+#  2 Flop                         97.0                  2.63                        0.377
+#  3 In-Betweener                 96.5                  3.06                        0.450
+#  4 Success                      95.8                  3.32                        0.855
+#  5 Smash-Hit                    95.0                  3.87                        1.09 
+
+# for shared_actor_distrib, remember that movies must have at least one shared actor with one other movie to show up at all.. so the results for this table might at first
+# appear to be a bit lackluster, but if you examine movies that then have two shared actors with another movie in the network, this occurs in Smash-Hits 2.25x more frequently
+# that in Failures. At three shared actors, that number between the two categories jumps to 10.3x.  As well, it is interesting that these results are linear. 
+# This linearity suggests that stronger collaborative ties in a movie's 5 main 'stars' appear to increase the likelihood of financial success.
