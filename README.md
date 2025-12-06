@@ -4,3 +4,5 @@ Our data is from Kaggle, including the [IMDb Actors and Movies](https://www.kagg
 
 ### Presentation Canva Link:
 View [here](https://www.canva.com/design/DAG5p-gvfHw/3uQZmZWmyak6Wv4ocOBs6Q/view?utm_content=DAG5p-gvfHw&utm_campaign=designshare&utm_medium=link2&utm_source=uniquelinks&utlId=hc9223170f9)
+*Last minute error with presentation. Canva cuts half of our video out when sharing a public link.*
+To resolve this issue, we have sent the collaborator sharing link with professor to view this presentation through autoplay. We apologize for the inconvenience.
